@@ -46,7 +46,7 @@ async def scheduled_deletion(client: Client, chat_id: int, message_ids: list):
         )
         logging.info(f"Mesajlar {message_ids} başarıyla silindi.")
     except Exception as e:
-        # Silme yetkisi yoksa veya mesaj zaten silinmişse sadece loglanır, gruba mesaj gitmez.
+        # Silme yetkisi yoksa veya mesaj zaten silinmişse sadece loglanır
         logging.error(f"Mesajlar {message_ids} silinirken hata oluştu: {e}")
 
 # --- Ana Mesaj İşleyici ---
@@ -56,7 +56,6 @@ async def scheduled_deletion(client: Client, chat_id: int, message_ids: list):
     ~filters.via_bot               
 )
 async def all_message_handler(client: Client, message: Message):
-    # Kısa veya boş mesajları işlemeden geç
     if not message.text or len(message.text) < 3:
         logging.debug("Kısa veya boş mesaj, işlenmiyor.")
         return 
@@ -64,16 +63,21 @@ async def all_message_handler(client: Client, message: Message):
     search_query = message.text
     logging.info(f"Gruptan gelen mesaj: '{search_query}'. Kaynak kanalda arama yapılıyor...")
     
+    # Arama sonucunu tutacak değişken
+    kaynak_mesaj = None
+    
     try:
-        # Kaynak kanalda arama yap ve sonucu listeye çevir (Hata düzeltmesi eklendi)
-        arama_sonuclari = await client.search_messages(
+        # Düzeltilen Kısım: Async generator'dan ilk sonucu almak için async for döngüsü kullanılır
+        async for msg in client.search_messages(
             chat_id=SOURCE_CHANNEL_ID,
             query=search_query,
             limit=1
-        ).to_list()
+        ):
+            # limit=1 olduğu için döngüde bulduğumuz ilk ve tek mesaj budur
+            kaynak_mesaj = msg
+            break # İlk mesajı bulur bulmaz döngüden çık
         
-        if arama_sonuclari:
-            kaynak_mesaj = arama_sonuclari[0]
+        if kaynak_mesaj:
             
             # Kaynak mesajı kopyala
             copied_message = await kaynak_mesaj.copy(
