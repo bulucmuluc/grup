@@ -6,30 +6,34 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.errors import RPCError 
 
+# .env dosyasından ortam değişkenlerini yükle
 load_dotenv()
 
+# Ortam değişkenlerini al ve hatalıysa programı sonlandır
 try:
     API_ID = int(os.getenv("API_ID"))
     API_HASH = os.getenv("API_HASH")
-    BOT_TOKEN = os.getenv("BOT_TOKEN")  # Bot Token Okunuyor
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
     TARGET_GROUP_ID = int(os.getenv("TARGET_GROUP_ID"))
     SOURCE_CHANNEL_ID = os.getenv("SOURCE_CHANNEL_ID")
 except (TypeError, ValueError) as e:
     print("HATA: .env dosyasındaki değişkenler eksik veya hatalı biçimde. Lütfen kontrol edin.")
     raise SystemExit(e)
 
+# Logging ayarları
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # --- KARMA OTURUM BAŞLATILIYOR (Kullanıcı Hesabı + Bot Token) ---
 app = Client(
-    "user_session",  # Oturum dosya adı
+    "user_session",  # Oturum dosya adı (İlk çalıştırmada kullanıcı girişi yapar)
     api_id=API_ID,
     api_hash=API_HASH,
-    bot_token=BOT_TOKEN  # Bot Token Eklendi
+    bot_token=BOT_TOKEN  # Bot Token ile bot yetkisi de sağlanır
 )
 
 # --- Mesaj Silme Görevi ---
 async def scheduled_deletion(client: Client, chat_id: int, message_ids: list):
+    # 10 dakika = 600 saniye
     DELAY = 10 * 60 
     logging.info(f"Silme işlemi {chat_id} sohbetindeki {message_ids} mesajları için {DELAY} saniye sonraya planlandı.")
     
@@ -61,7 +65,7 @@ async def all_message_handler(client: Client, message: Message):
     kaynak_mesaj = None
     
     try:
-        # search_messages (Kullanıcı hesabı yetkisiyle çalışır)
+        # Arama işlemi (Kullanıcı hesabı yetkisiyle çalışır)
         async for msg in client.search_messages(
             chat_id=SOURCE_CHANNEL_ID,
             query=search_query,
@@ -72,13 +76,16 @@ async def all_message_handler(client: Client, message: Message):
         
         if kaynak_mesaj:
             
-            # copy (Bot yetkisiyle gönderilir)
-            copied_message = await kaynak_mesaj.copy(
-                chat_id=message.chat.id
+            # Kopyalama işlemi (Hata düzeltmesi: Client metodu kullanılarak Bot yetkisiyle yapılır)
+            copied_message = await client.copy_message(
+                chat_id=message.chat.id,        # Hedef sohbet
+                from_chat_id=kaynak_mesaj.chat.id, # Kaynak sohbet
+                message_id=kaynak_mesaj.id      # Kopyalanacak mesaj ID'si
             )
             
             logging.info(f"Kaynak kanaldan mesaj ID: {kaynak_mesaj.id} başarıyla kopyalandı.")
 
+            # Silme görevini planla
             messages_to_delete_ids = [message.id, copied_message.id]
 
             asyncio.create_task(
@@ -90,6 +97,7 @@ async def all_message_handler(client: Client, message: Message):
             )
             
         else:
+            # Eşleşen mesaj bulunamazsa sessiz kal
             logging.warning(f"Kaynak kanalda '{search_query}' kelimesiyle eşleşen mesaj bulunamadı. Sessiz kalınıyor.")
         
     except RPCError as e:
